@@ -208,8 +208,8 @@ function searchItem() {
                 clean(row.Item) === altCode
             );
 
-            if (altRow && altRow["Desc."]) {
-                altDescription = altRow["Desc."];
+            if (altRow && altRow["Alternative Desc."]) {
+                altDescription = altRow["Alternative Desc."];
             } 
             else if (spare["Desc..1"]) {
                 altDescription = spare["Desc..1"];
