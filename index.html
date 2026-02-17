@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>BAAN Code & Alternative Spare Check</title>
+    <title>BAAN code & Alternative check</title>
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
 
     <style>
@@ -65,7 +65,7 @@
 <body>
 
 <div class="header">
-    BAAN Code & Alternative Spare Check
+    BAAN code & Alternative check
 </div>
 
 <div class="container">
@@ -84,7 +84,10 @@ let mappingData = [];
 let spareData = [];
 let stockData = [];
 
-// Load CSV Files
+function clean(value) {
+    return value ? value.toString().trim().toUpperCase() : "";
+}
+
 Papa.parse("Ban Item_Code_Mapping (7).csv", {
     download: true,
     header: true,
@@ -117,13 +120,10 @@ Papa.parse("Spares stock.csv", {
 
 function getStockHTML(itemCode) {
 
-    if (!itemCode) return `<div class="no-data">No Stock Available</div>`;
-
     let stockVW = stockData.filter(row =>
-        row["Item code"] &&
-        row["Item code"].trim() === itemCode.trim() &&
-        (row["Warehouse code"] === "ZBF12T" ||
-         row["Warehouse code"] === "ZBF12S")
+        clean(row["Item code"]) === clean(itemCode) &&
+        (clean(row["Warehouse code"]) === "ZBF12T" ||
+         clean(row["Warehouse code"]) === "ZBF12S")
     );
 
     let html = "";
@@ -159,7 +159,7 @@ function getStockHTML(itemCode) {
 
 function searchItem() {
 
-    let code = document.getElementById("itemCode").value.trim();
+    let code = clean(document.getElementById("itemCode").value);
     let output = document.getElementById("output");
 
     if (code.length < 2) {
@@ -170,22 +170,22 @@ function searchItem() {
     let newCode = null;
     let description = null;
 
-    // ===== Step 1: Check Mapping =====
+    // ===== Step 1: Mapping Check =====
     let mapping = mappingData.find(row =>
-        (row.Old_Item_Code && row.Old_Item_Code.trim() === code) ||
-        (row.New_item_code && row.New_item_code.trim() === code)
+        clean(row.Old_Item_Code) === code ||
+        clean(row.New_item_code) === code
     );
 
     if (mapping) {
-        newCode = mapping.New_item_code.trim();
+        newCode = clean(mapping.New_item_code);
         description = mapping.New_Item_Desc;
     } else {
         newCode = code;
     }
 
-    // ===== Step 2: Check Spare Data =====
+    // ===== Step 2: Spare Lookup =====
     let spare = spareData.find(row =>
-        row.Item && row.Item.trim() === newCode.trim()
+        clean(row.Item) === newCode
     );
 
     let altCode = null;
@@ -193,48 +193,40 @@ function searchItem() {
 
     if (spare) {
 
-        // Main Description fallback
         if (!description && spare["Desc."]) {
             description = spare["Desc."];
         }
 
-        // Alternative Code
-        if (spare.AlternativeItem && spare.AlternativeItem.trim() !== "") {
-            altCode = spare.AlternativeItem.trim();
+        if (spare.AlternativeItem) {
+            altCode = clean(spare.AlternativeItem);
         }
 
-        // Alternative Description Logic
         if (altCode) {
 
-            // 1️⃣ Try same row alt description
-            if (spare["Desc..1"] && spare["Desc..1"].trim() !== "") {
-                altDescription = spare["Desc..1"];
-            } 
-            else {
-                // 2️⃣ Search alternative item separately
-                let altRow = spareData.find(row =>
-                    row.Item && row.Item.trim() === altCode
-                );
+            // Search entire spare file for alt item (robust search)
+            let altRow = spareData.find(row =>
+                clean(row.Item) === altCode
+            );
 
-                if (altRow && altRow["Desc."] && altRow["Desc."].trim() !== "") {
-                    altDescription = altRow["Desc."];
-                } else {
-                    altDescription = "Not Available";
-                }
+            if (altRow && altRow["Desc."]) {
+                altDescription = altRow["Desc."];
+            } 
+            else if (spare["Desc..1"]) {
+                altDescription = spare["Desc..1"];
+            }
+            else {
+                altDescription = "Not Available";
             }
         }
     }
 
     // ===== Step 3: Check Existence =====
-    let hasStock = stockData.some(row =>
-        row["Item code"] &&
-        row["Item code"].trim() === newCode.trim()
-    );
+    let existsAnywhere =
+        mapping ||
+        spare ||
+        stockData.some(row => clean(row["Item code"]) === newCode);
 
-    let hasSpare = spare !== undefined;
-    let hasMapping = mapping !== undefined;
-
-    if (!hasStock && !hasSpare && !hasMapping) {
+    if (!existsAnywhere) {
         output.innerHTML = `
             <div class="card">
                 <div class="no-data">Item Not Found Anywhere</div>
@@ -264,7 +256,7 @@ function searchItem() {
                 altCode ?
                 `
                     <div><strong>Alternative Code:</strong> ${altCode}</div>
-                    <div><strong>Description:</strong> ${altDescription}</div>
+                    <div><strong>Description:</strong> ${altDescription || "Not Available"}</div>
 
                     <div style="margin-top:15px;">
                         <strong>Warehouse Stock</strong>
