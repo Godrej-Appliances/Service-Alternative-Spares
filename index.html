@@ -147,38 +147,63 @@ function searchItem() {
         return;
     }
 
+    let newCode = null;
+    let description = null;
+
+    // Step 1: Check in Mapping (Old or New)
     let mapping = mappingData.find(row => 
         row.Old_Item_Code === code ||
         row.New_item_code === code
     );
 
-    if (!mapping) {
+    if (mapping) {
+        newCode = mapping.New_item_code;
+        description = mapping.New_Item_Desc;
+    } else {
+        // If not in mapping, assume entered code is itself
+        newCode = code;
+    }
+
+    // Step 2: Check sparedata
+    let spare = spareData.find(row => row.Item === newCode);
+
+    let altCode = null;
+    let altDescription = null;
+
+    if (spare) {
+        description = description || spare["Desc."];
+        altCode = spare.AlternativeItem;
+        altDescription = spare["Desc..1"];
+    }
+
+    // Step 3: Check Stock
+    let mainStockHTML = getStockHTML(newCode);
+
+    // Step 4: Alternative Stock
+    let altStockHTML = altCode ? getStockHTML(altCode) : "";
+
+    // Step 5: Check if absolutely nothing exists
+    let hasStock = stockData.some(row => row["Item code"] === newCode);
+    let hasSpare = spare !== undefined;
+    let hasMapping = mapping !== undefined;
+
+    if (!hasStock && !hasSpare && !hasMapping) {
         output.innerHTML = `<div class="card">
-            <div class="no-data">Item Not Found</div>
+            <div class="no-data">Item Not Found Anywhere</div>
         </div>`;
         return;
     }
-
-    let newCode = mapping.New_item_code;
-    let description = mapping.New_Item_Desc;
-
-    let spare = spareData.find(row => row.Item === newCode);
-
-    let altCode = spare ? spare.AlternativeItem : null;
-    let altDescription = spare ? spare["Desc..1"] : null;
-
-    let altStockHTML = altCode ? getStockHTML(altCode) : "";
 
     output.innerHTML = `
 
         <div class="card">
             <div class="section-title">Main Item</div>
-            <div><strong>New Code:</strong> ${newCode}</div>
-            <div><strong>Description:</strong> ${description}</div>
+            <div><strong>Item Code:</strong> ${newCode}</div>
+            <div><strong>Description:</strong> ${description || "Not Available"}</div>
 
             <div style="margin-top:15px;">
                 <strong>Warehouse Stock</strong>
-                ${getStockHTML(newCode)}
+                ${mainStockHTML}
             </div>
         </div>
 
@@ -188,7 +213,7 @@ function searchItem() {
                 altCode ?
                 `
                 <div><strong>Alternative Code:</strong> ${altCode}</div>
-                <div><strong>Description:</strong> ${altDescription}</div>
+                <div><strong>Description:</strong> ${altDescription || "Not Available"}</div>
                 <div style="margin-top:15px;">
                     <strong>Warehouse Stock</strong>
                     ${altStockHTML}
