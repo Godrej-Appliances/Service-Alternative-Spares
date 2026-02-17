@@ -1,2 +1,135 @@
 <!DOCTYPE html>
-<html><body><h3>File generation retry placeholder.</h3></body></html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spare Code Finder</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    background: url('background.jpg') no-repeat center center fixed;
+    background-size: cover;
+}
+
+.overlay {
+    background: rgba(255,255,255,0.94);
+    min-height: 100vh;
+    padding: 40px 20px;
+}
+
+.container {
+    max-width: 720px;
+    margin: auto;
+    background: #ffffff;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 4px 25px rgba(0,0,0,0.25);
+}
+
+h2 { text-align: center; margin-bottom: 25px; }
+
+input {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    margin-bottom: 20px;
+}
+
+.result {
+    background: #f7f7f7;
+    padding: 20px;
+    border-radius: 8px;
+    line-height: 1.7;
+}
+</style>
+</head>
+
+<body>
+<div class="overlay">
+<div class="container">
+<h2>Spare Code / BAAN Code Lookup</h2>
+
+<input type="text" id="searchBox" placeholder="Enter Spare Code or BAAN Code..." onkeyup="findData()">
+
+<div id="output" class="result">Enter a code to view details.</div>
+</div>
+</div>
+
+<script>
+let spareData = [];
+let stockData = [];
+let baanData  = [];
+
+// Load all 3 datasets
+fetch('sparedata.csv').then(r=>r.text()).then(t=>spareData=parseCSV(t));
+fetch('Spares stock.csv').then(r=>r.text()).then(t=>stockData=parseCSV(t));
+fetch('Ban Item_Code_Mapping (7).csv').then(r=>r.text()).then(t=>baanData=parseCSV(t));
+
+function parseCSV(text){
+ const rows = text.split('\\n').map(r=>r.split(','));
+ const headers = rows[0];
+
+ return rows.slice(1).map(row=>{
+   let obj={};
+   headers.forEach((h,i)=>obj[h.trim()] = (row[i]||"").trim());
+   return obj;
+ });
+}
+
+function findData(){
+ const inputCode = document.getElementById('searchBox').value.trim();
+ if(!inputCode) return;
+
+ let code = inputCode;
+ let baanMatch = baanData.find(d =>
+     Object.values(d).includes(inputCode)
+ );
+
+ let isBaan = false;
+ let baanMessage = "";
+
+ // If BAAN Code → Convert to New Spare
+ if(baanMatch){
+     isBaan = true;
+     code = Object.values(baanMatch)[1]; // assumes New Code is 2nd column
+     baanMessage =
+     "<b>Entered BAAN Code:</b> " + inputCode + "<br>" +
+     "<b>Mapped To New Spare:</b> " + code + "<br><br>";
+ }
+
+ const spare = spareData.find(d => Object.values(d)[0] === code);
+ const stock = stockData.find(d => Object.values(d)[0] === code);
+
+ if(!spare && !stock){
+     document.getElementById("output").innerHTML =
+     "Code not available in system.";
+     return;
+ }
+
+ let html = baanMessage;
+
+ html += "<b>Spare Code:</b> " + code + "<br>";
+
+ if(spare){
+     html += "<b>Description:</b> " + (Object.values(spare)[1] || "-") + "<br><br>";
+ }
+
+ html += "<b>Stock Availability</b><br>";
+ html += "Branch Stock : " + (stock ? Object.values(stock)[1] : "0") + "<br>";
+ html += "ZBF12T : " + (stock ? Object.values(stock)[2] : "0") + "<br>";
+ html += "ZBF12S : " + (stock ? Object.values(stock)[3] : "0") + "<br><br>";
+
+ if(spare && Object.values(spare)[2]){
+     html += "<b>Alternative Code:</b> " + Object.values(spare)[2] + "<br>";
+     html += "<b>Alternative Description:</b> " + (Object.values(spare)[3] || "-");
+ } else {
+     html += "<b>Alternative:</b> Not Available";
+ }
+
+ document.getElementById("output").innerHTML = html;
+}
+</script>
+</body>
+</html>
