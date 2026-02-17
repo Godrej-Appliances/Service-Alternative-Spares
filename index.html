@@ -184,42 +184,49 @@ function searchItem() {
     }
 
     // ===== Step 2: Spare Lookup =====
-    let spare = spareData.find(row =>
-        clean(row.Item) === newCode
-    );
+let spare = spareData.find(row =>
+    clean(row["Item"]) === newCode
+);
 
-    let altCode = null;
-    let altDescription = null;
+let altCode = null;
+let altDescription = null;
 
-    if (spare) {
+if (spare) {
 
-        if (!description && spare["Desc."]) {
-            description = spare["Desc."];
-        }
-
-        if (spare.AlternativeItem) {
-            altCode = clean(spare.AlternativeItem);
-        }
-
-        if (altCode) {
-
-            // Search entire spare file for alt item (robust search)
-            let altRow = spareData.find(row =>
-                clean(row.Item) === altCode
-            );
-
-            if (altRow && altRow["Alternative Desc."]) {
-                altDescription = altRow["Alternative Desc."];
-            } 
-            else if (spare["Desc..1"]) {
-                altDescription = spare["Desc..1"];
-            }
-            else {
-                altDescription = "Not Available";
-            }
-        }
+    // Main Description
+    if (!description && spare["Desc."]) {
+        description = spare["Desc."];
     }
 
+    // Get Alternative Code
+    if (spare["AlternativeItem"]) {
+        altCode = clean(spare["AlternativeItem"]);
+    }
+
+    if (altCode) {
+
+        // First try: get description directly from same row
+        if (spare["AlternativeDesc."]) {
+            altDescription = spare["AlternativeDesc."];
+        }
+
+        // Second try: search entire spare file for alt item
+        if (!altDescription) {
+            let altRow = spareData.find(row =>
+                clean(row["Item"]) === altCode
+            );
+
+            if (altRow && altRow["Desc."]) {
+                altDescription = altRow["Desc."];
+            }
+        }
+
+        // Final fallback
+        if (!altDescription) {
+            altDescription = "Not Available";
+        }
+    }
+}
     // ===== Step 3: Check Existence =====
     let existsAnywhere =
         mapping ||
