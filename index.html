@@ -1,135 +1,208 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Spare Code Finder</title>
+    <title>Baan ERP Item Checker</title>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+    <style>
+        body {
+            font-family: Arial;
+            background: #f4f6f9;
+            margin: 0;
+            padding: 0;
+        }
 
-<style>
-body {
-    margin: 0;
-    font-family: Arial, Helvetica, sans-serif;
-    background: url('background.jpg') no-repeat center center fixed;
-    background-size: cover;
-}
+        .header {
+            background: #1f2d3d;
+            color: white;
+            padding: 20px;
+            font-size: 20px;
+        }
 
-.overlay {
-    background: rgba(255,255,255,0.94);
-    min-height: 100vh;
-    padding: 40px 20px;
-}
+        .container {
+            padding: 30px;
+        }
 
-.container {
-    max-width: 720px;
-    margin: auto;
-    background: #ffffff;
-    padding: 30px;
-    border-radius: 10px;
-    box-shadow: 0 4px 25px rgba(0,0,0,0.25);
-}
+        input {
+            padding: 10px;
+            width: 300px;
+            font-size: 14px;
+        }
 
-h2 { text-align: center; margin-bottom: 25px; }
+        .card {
+            background: white;
+            padding: 20px;
+            margin-top: 20px;
+            border-radius: 6px;
+            box-shadow: 0px 2px 5px rgba(0,0,0,0.1);
+        }
 
-input {
-    width: 100%;
-    padding: 12px;
-    font-size: 16px;
-    margin-bottom: 20px;
-}
+        .section-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
 
-.result {
-    background: #f7f7f7;
-    padding: 20px;
-    border-radius: 8px;
-    line-height: 1.7;
-}
-</style>
+        .low-stock {
+            color: red;
+            font-weight: bold;
+        }
+
+        .stock-line {
+            margin: 5px 0;
+        }
+
+        .no-data {
+            color: gray;
+        }
+
+        @media(max-width:600px){
+            input { width: 100%; }
+        }
+    </style>
 </head>
-
 <body>
-<div class="overlay">
-<div class="container">
-<h2>Spare Code / BAAN Code Lookup</h2>
 
-<input type="text" id="searchBox" placeholder="Enter Spare Code or BAAN Code..." onkeyup="findData()">
-
-<div id="output" class="result">Enter a code to view details.</div>
+<div class="header">
+    Baan ERP Item Checker
 </div>
+
+<div class="container">
+
+    <input type="text" id="itemCode" 
+           placeholder="Enter Old or New Item Code"
+           onkeyup="searchItem()">
+
+    <div id="output"></div>
+
 </div>
 
 <script>
+
+let mappingData = [];
 let spareData = [];
 let stockData = [];
-let baanData  = [];
 
-// Load all 3 datasets
-fetch('sparedata.csv').then(r=>r.text()).then(t=>spareData=parseCSV(t));
-fetch('Spares stock.csv').then(r=>r.text()).then(t=>stockData=parseCSV(t));
-fetch('Ban Item_Code_Mapping (7).csv').then(r=>r.text()).then(t=>baanData=parseCSV(t));
+Papa.parse("Ban Item_Code_Mapping (7).csv", {
+    download: true,
+    header: true,
+    complete: function(results) {
+        mappingData = results.data;
+    }
+});
 
-function parseCSV(text){
- const rows = text.split('\\n').map(r=>r.split(','));
- const headers = rows[0];
+Papa.parse("sparedata.csv", {
+    download: true,
+    header: true,
+    complete: function(results) {
+        spareData = results.data;
+    }
+});
 
- return rows.slice(1).map(row=>{
-   let obj={};
-   headers.forEach((h,i)=>obj[h.trim()] = (row[i]||"").trim());
-   return obj;
- });
+Papa.parse("Spares stock.csv", {
+    download: true,
+    header: true,
+    complete: function(results) {
+        stockData = results.data;
+    }
+});
+
+function getStockHTML(itemCode) {
+
+    let stockVW = stockData.filter(row =>
+        row["Item code"] === itemCode &&
+        (row["Warehouse code"] === "ZBF12T" ||
+         row["Warehouse code"] === "ZBF12S")
+    );
+
+    let html = "";
+    let total = 0;
+
+    if (stockVW.length > 0) {
+        stockVW.forEach(row => {
+            let qty = parseFloat(row["Stock on Hand"]) || 0;
+            total += qty;
+
+            let cls = qty < 5 ? "low-stock" : "";
+
+            html += `<div class="stock-line ${cls}">
+                        ${row["Warehouse code"]} : ${qty}
+                     </div>`;
+        });
+
+        html += `<hr><strong>Total Stock: ${total}</strong>`;
+    } else {
+        html = `<div class="no-data">No Stock Available</div>`;
+    }
+
+    return html;
 }
 
-function findData(){
- const inputCode = document.getElementById('searchBox').value.trim();
- if(!inputCode) return;
+function searchItem() {
 
- let code = inputCode;
- let baanMatch = baanData.find(d =>
-     Object.values(d).includes(inputCode)
- );
+    let code = document.getElementById("itemCode").value.trim();
+    let output = document.getElementById("output");
 
- let isBaan = false;
- let baanMessage = "";
+    if (code.length < 2) {
+        output.innerHTML = "";
+        return;
+    }
 
- // If BAAN Code → Convert to New Spare
- if(baanMatch){
-     isBaan = true;
-     code = Object.values(baanMatch)[1]; // assumes New Code is 2nd column
-     baanMessage =
-     "<b>Entered BAAN Code:</b> " + inputCode + "<br>" +
-     "<b>Mapped To New Spare:</b> " + code + "<br><br>";
- }
+    let mapping = mappingData.find(row => 
+        row.Old_Item_Code === code ||
+        row.New_item_code === code
+    );
 
- const spare = spareData.find(d => Object.values(d)[0] === code);
- const stock = stockData.find(d => Object.values(d)[0] === code);
+    if (!mapping) {
+        output.innerHTML = `<div class="card">
+            <div class="no-data">Item Not Found</div>
+        </div>`;
+        return;
+    }
 
- if(!spare && !stock){
-     document.getElementById("output").innerHTML =
-     "Code not available in system.";
-     return;
- }
+    let newCode = mapping.New_item_code;
+    let description = mapping.New_Item_Desc;
 
- let html = baanMessage;
+    let spare = spareData.find(row => row.Item === newCode);
 
- html += "<b>Spare Code:</b> " + code + "<br>";
+    let altCode = spare ? spare.AlternativeItem : null;
+    let altDescription = spare ? spare["Desc..1"] : null;
 
- if(spare){
-     html += "<b>Description:</b> " + (Object.values(spare)[1] || "-") + "<br><br>";
- }
+    let altStockHTML = altCode ? getStockHTML(altCode) : "";
 
- html += "<b>Stock Availability</b><br>";
- html += "Branch Stock : " + (stock ? Object.values(stock)[1] : "0") + "<br>";
- html += "ZBF12T : " + (stock ? Object.values(stock)[2] : "0") + "<br>";
- html += "ZBF12S : " + (stock ? Object.values(stock)[3] : "0") + "<br><br>";
+    output.innerHTML = `
 
- if(spare && Object.values(spare)[2]){
-     html += "<b>Alternative Code:</b> " + Object.values(spare)[2] + "<br>";
-     html += "<b>Alternative Description:</b> " + (Object.values(spare)[3] || "-");
- } else {
-     html += "<b>Alternative:</b> Not Available";
- }
+        <div class="card">
+            <div class="section-title">Main Item</div>
+            <div><strong>New Code:</strong> ${newCode}</div>
+            <div><strong>Description:</strong> ${description}</div>
 
- document.getElementById("output").innerHTML = html;
+            <div style="margin-top:15px;">
+                <strong>Warehouse Stock</strong>
+                ${getStockHTML(newCode)}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="section-title">Alternative Item</div>
+            ${
+                altCode ?
+                `
+                <div><strong>Alternative Code:</strong> ${altCode}</div>
+                <div><strong>Description:</strong> ${altDescription}</div>
+                <div style="margin-top:15px;">
+                    <strong>Warehouse Stock</strong>
+                    ${altStockHTML}
+                </div>
+                `
+                :
+                `<div class="no-data">No Alternative Available</div>`
+            }
+        </div>
+
+    `;
 }
+
 </script>
+
 </body>
 </html>
