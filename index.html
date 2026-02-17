@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Baan ERP Item Checker</title>
+    <title>BAAN Code & Alternative Spare Check </title>
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+
     <style>
         body {
             font-family: Arial;
@@ -60,6 +61,7 @@
         }
     </style>
 </head>
+
 <body>
 
 <div class="header">
@@ -82,9 +84,11 @@ let mappingData = [];
 let spareData = [];
 let stockData = [];
 
+// Load CSV Files
 Papa.parse("Ban Item_Code_Mapping (7).csv", {
     download: true,
     header: true,
+    skipEmptyLines: true,
     complete: function(results) {
         mappingData = results.data;
     }
@@ -93,6 +97,7 @@ Papa.parse("Ban Item_Code_Mapping (7).csv", {
 Papa.parse("sparedata.csv", {
     download: true,
     header: true,
+    skipEmptyLines: true,
     complete: function(results) {
         spareData = results.data;
     }
@@ -101,15 +106,22 @@ Papa.parse("sparedata.csv", {
 Papa.parse("Spares stock.csv", {
     download: true,
     header: true,
+    skipEmptyLines: true,
     complete: function(results) {
         stockData = results.data;
     }
 });
 
+
+// ================= STOCK FUNCTION =================
+
 function getStockHTML(itemCode) {
 
+    if (!itemCode) return `<div class="no-data">No Stock Available</div>`;
+
     let stockVW = stockData.filter(row =>
-        row["Item code"] === itemCode &&
+        row["Item code"] &&
+        row["Item code"].trim() === itemCode.trim() &&
         (row["Warehouse code"] === "ZBF12T" ||
          row["Warehouse code"] === "ZBF12S")
     );
@@ -118,24 +130,32 @@ function getStockHTML(itemCode) {
     let total = 0;
 
     if (stockVW.length > 0) {
+
         stockVW.forEach(row => {
+
             let qty = parseFloat(row["Stock on Hand"]) || 0;
             total += qty;
 
             let cls = qty < 5 ? "low-stock" : "";
 
-            html += `<div class="stock-line ${cls}">
-                        ${row["Warehouse code"]} : ${qty}
-                     </div>`;
+            html += `
+                <div class="stock-line ${cls}">
+                    ${row["Warehouse code"]} : ${qty}
+                </div>
+            `;
         });
 
         html += `<hr><strong>Total Stock: ${total}</strong>`;
+
     } else {
         html = `<div class="no-data">No Stock Available</div>`;
     }
 
     return html;
 }
+
+
+// ================= MAIN SEARCH FUNCTION =================
 
 function searchItem() {
 
@@ -150,49 +170,80 @@ function searchItem() {
     let newCode = null;
     let description = null;
 
-    // Step 1: Check in Mapping (Old or New)
-    let mapping = mappingData.find(row => 
-        row.Old_Item_Code === code ||
-        row.New_item_code === code
+    // ===== Step 1: Check Mapping =====
+    let mapping = mappingData.find(row =>
+        (row.Old_Item_Code && row.Old_Item_Code.trim() === code) ||
+        (row.New_item_code && row.New_item_code.trim() === code)
     );
 
     if (mapping) {
-        newCode = mapping.New_item_code;
+        newCode = mapping.New_item_code.trim();
         description = mapping.New_Item_Desc;
     } else {
-        // If not in mapping, assume entered code is itself
         newCode = code;
     }
 
-    // Step 2: Check sparedata
-    let spare = spareData.find(row => row.Item === newCode);
+    // ===== Step 2: Check Spare Data =====
+    let spare = spareData.find(row =>
+        row.Item && row.Item.trim() === newCode.trim()
+    );
 
     let altCode = null;
     let altDescription = null;
 
     if (spare) {
-        description = description || spare["Desc."];
-        altCode = spare.AlternativeItem;
-        altDescription = spare["Desc..1"];
+
+        // Main Description fallback
+        if (!description && spare["Desc."]) {
+            description = spare["Desc."];
+        }
+
+        // Alternative Code
+        if (spare.AlternativeItem && spare.AlternativeItem.trim() !== "") {
+            altCode = spare.AlternativeItem.trim();
+        }
+
+        // Alternative Description Logic
+        if (altCode) {
+
+            // 1️⃣ Try same row alt description
+            if (spare["Desc..1"] && spare["Desc..1"].trim() !== "") {
+                altDescription = spare["Desc..1"];
+            } 
+            else {
+                // 2️⃣ Search alternative item separately
+                let altRow = spareData.find(row =>
+                    row.Item && row.Item.trim() === altCode
+                );
+
+                if (altRow && altRow["Desc."] && altRow["Desc."].trim() !== "") {
+                    altDescription = altRow["Desc."];
+                } else {
+                    altDescription = "Not Available";
+                }
+            }
+        }
     }
 
-    // Step 3: Check Stock
-    let mainStockHTML = getStockHTML(newCode);
+    // ===== Step 3: Check Existence =====
+    let hasStock = stockData.some(row =>
+        row["Item code"] &&
+        row["Item code"].trim() === newCode.trim()
+    );
 
-    // Step 4: Alternative Stock
-    let altStockHTML = altCode ? getStockHTML(altCode) : "";
-
-    // Step 5: Check if absolutely nothing exists
-    let hasStock = stockData.some(row => row["Item code"] === newCode);
     let hasSpare = spare !== undefined;
     let hasMapping = mapping !== undefined;
 
     if (!hasStock && !hasSpare && !hasMapping) {
-        output.innerHTML = `<div class="card">
-            <div class="no-data">Item Not Found Anywhere</div>
-        </div>`;
+        output.innerHTML = `
+            <div class="card">
+                <div class="no-data">Item Not Found Anywhere</div>
+            </div>
+        `;
         return;
     }
+
+    // ===== Render Output =====
 
     output.innerHTML = `
 
@@ -203,7 +254,7 @@ function searchItem() {
 
             <div style="margin-top:15px;">
                 <strong>Warehouse Stock</strong>
-                ${mainStockHTML}
+                ${getStockHTML(newCode)}
             </div>
         </div>
 
@@ -212,18 +263,18 @@ function searchItem() {
             ${
                 altCode ?
                 `
-                <div><strong>Alternative Code:</strong> ${altCode}</div>
-                <div><strong>Description:</strong> ${altDescription || "Not Available"}</div>
-                <div style="margin-top:15px;">
-                    <strong>Warehouse Stock</strong>
-                    ${altStockHTML}
-                </div>
+                    <div><strong>Alternative Code:</strong> ${altCode}</div>
+                    <div><strong>Description:</strong> ${altDescription}</div>
+
+                    <div style="margin-top:15px;">
+                        <strong>Warehouse Stock</strong>
+                        ${getStockHTML(altCode)}
+                    </div>
                 `
                 :
                 `<div class="no-data">No Alternative Available</div>`
             }
         </div>
-
     `;
 }
 
