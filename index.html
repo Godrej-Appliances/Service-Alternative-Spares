@@ -88,6 +88,7 @@ function clean(value) {
     return value ? value.toString().trim().toUpperCase() : "";
 }
 
+// Load Mapping CSV
 Papa.parse("Ban Item_Code_Mapping (7).csv", {
     download: true,
     header: true,
@@ -97,6 +98,7 @@ Papa.parse("Ban Item_Code_Mapping (7).csv", {
     }
 });
 
+// Load Spare CSV
 Papa.parse("sparedata.csv", {
     download: true,
     header: true,
@@ -106,6 +108,7 @@ Papa.parse("sparedata.csv", {
     }
 });
 
+// Load Stock CSV
 Papa.parse("Spares stock.csv", {
     download: true,
     header: true,
@@ -169,8 +172,10 @@ function searchItem() {
 
     let newCode = null;
     let description = null;
+    let altCode = null;
+    let altDescription = null;
 
-    // ===== Step 1: Mapping Check =====
+    // ===== STEP 1: Mapping Check =====
     let mapping = mappingData.find(row =>
         clean(row.Old_Item_Code) === code ||
         clean(row.New_item_code) === code
@@ -183,51 +188,60 @@ function searchItem() {
         newCode = code;
     }
 
-    // ===== Step 2: Spare Lookup =====
-let spare = spareData.find(row =>
-    clean(row["Item"]) === newCode
-);
+    // ===== STEP 2: Spare Lookup =====
+    let spare = spareData.find(row =>
+        clean(row["Item"]) === newCode
+    );
 
-let altCode = null;
-let altDescription = null;
+    if (spare) {
 
-if (spare) {
-
-    // Main Description
-    if (!description && spare["Desc."]) {
-        description = spare["Desc."];
-    }
-
-    // Get Alternative Code
-    if (spare["AlternativeItem"]) {
-        altCode = clean(spare["AlternativeItem"]);
-    }
-
-    if (altCode) {
-
-        // First try: get description directly from same row
-        if (spare["AlternativeDesc."]) {
-            altDescription = spare["AlternativeDesc."];
+        if (!description && spare["Desc."]) {
+            description = spare["Desc."];
         }
 
-        // Second try: search entire spare file for alt item
-        if (!altDescription) {
-            let altRow = spareData.find(row =>
-                clean(row["Item"]) === altCode
-            );
+        if (spare["AlternativeItem"]) {
+            altCode = clean(spare["AlternativeItem"]);
+        }
 
-            if (altRow && altRow["Desc."]) {
-                altDescription = altRow["Desc."];
+        if (altCode) {
+
+            if (spare["AlternativeDesc."]) {
+                altDescription = spare["AlternativeDesc."];
+            }
+
+            if (!altDescription) {
+                let altRow = spareData.find(row =>
+                    clean(row["Item"]) === altCode
+                );
+
+                if (altRow && altRow["Desc."]) {
+                    altDescription = altRow["Desc."];
+                }
+            }
+
+            if (!altDescription) {
+                altDescription = "Not Available";
             }
         }
+    }
 
-        // Final fallback
-        if (!altDescription) {
-            altDescription = "Not Available";
+    // ===== STEP 3: STOCK DESCRIPTION FALLBACK =====
+    if (!description) {
+
+        let stockRow = stockData.find(row =>
+            clean(row["Item code"]) === newCode
+        );
+
+        if (stockRow && stockRow["Item Description"]) {
+            description = stockRow["Item Description"];
         }
     }
-}
-    // ===== Step 3: Check Existence =====
+
+    if (!description) {
+        description = "Not Available";
+    }
+
+    // ===== STEP 4: Check Existence Anywhere =====
     let existsAnywhere =
         mapping ||
         spare ||
@@ -242,14 +256,13 @@ if (spare) {
         return;
     }
 
-    // ===== Render Output =====
-
+    // ===== RENDER OUTPUT =====
     output.innerHTML = `
 
         <div class="card">
             <div class="section-title">Main Item</div>
             <div><strong>Item Code:</strong> ${newCode}</div>
-            <div><strong>Description:</strong> ${description || "Not Available"}</div>
+            <div><strong>Description:</strong> ${description}</div>
 
             <div style="margin-top:15px;">
                 <strong>Warehouse Stock</strong>
@@ -263,7 +276,7 @@ if (spare) {
                 altCode ?
                 `
                     <div><strong>Alternative Code:</strong> ${altCode}</div>
-                    <div><strong>Description:</strong> ${altDescription || "Not Available"}</div>
+                    <div><strong>Description:</strong> ${altDescription}</div>
 
                     <div style="margin-top:15px;">
                         <strong>Warehouse Stock</strong>
